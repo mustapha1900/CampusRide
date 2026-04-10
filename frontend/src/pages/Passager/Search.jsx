@@ -28,6 +28,7 @@ export default function Search() {
 
   useEffect(() => {
     document.body.dataset.bsTheme = theme;
+    window.scrollTo(0, 0);
   }, [theme]);
 
   useEffect(() => {
@@ -35,8 +36,11 @@ export default function Search() {
       try {
         setLoading(true);
         const params = new URLSearchParams();
-        if (stateFilters.depart)      params.set("depart", stateFilters.depart);
-        if (stateFilters.destination) params.set("destination", stateFilters.destination);
+        // Si coordonnées GPS dispo, on se base sur elles — pas sur le texte complet Google Places
+        if (!stateFilters.departCoords && stateFilters.depart)
+          params.set("depart", stateFilters.depart);
+        if (!stateFilters.destCoords && stateFilters.destination)
+          params.set("destination", stateFilters.destination);
         if (stateFilters.date)        params.set("date", stateFilters.date);
         if (stateFilters.departCoords) {
           params.set("depart_lat", stateFilters.departCoords.lat);

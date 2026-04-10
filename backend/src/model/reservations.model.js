@@ -1,4 +1,13 @@
 import { pool } from "../DB/db.js";
+import { sendPushToUser } from "../utils/pushNotification.js";
+import {
+  emailNouvelleReservation,
+  emailReservationAcceptee,
+  emailReservationRefusee,
+  emailReservationAnnuleeParPassager,
+} from "../utils/sendEmail.js";
+
+const APP_URL = process.env.APP_URL || "https://campusride-delta.vercel.app";
 
 
 export async function createReservation(passagerId, trajetId) {
@@ -11,18 +20,14 @@ export async function createReservation(passagerId, trajetId) {
 
     const trajetRes = await client.query(
       `
-  SELECT 
-    id,
-    conducteur_id,
-    statut,
-    places_total,
-    places_dispo,
-    dateheure_depart,
-    lieu_depart,
-    destination
-  FROM trajets
-  WHERE id = $1
-  FOR UPDATE
+  SELECT
+    t.id, t.conducteur_id, t.statut, t.places_total, t.places_dispo,
+    t.dateheure_depart, t.lieu_depart, t.destination,
+    u.email AS conducteur_email
+  FROM trajets t
+  JOIN utilisateurs u ON u.id = t.conducteur_id
+  WHERE t.id = $1
+  FOR UPDATE OF t
   `,
       [trajetId]
     );
@@ -35,7 +40,7 @@ export async function createReservation(passagerId, trajetId) {
     const trajet = trajetRes.rows[0];
 
     const userRes = await client.query(
-      `SELECT prenom FROM utilisateurs WHERE id = $1`,
+      `SELECT prenom, email FROM utilisateurs WHERE id = $1`,
       [passagerId]
     );
 
@@ -139,6 +144,23 @@ export async function createReservation(passagerId, trajetId) {
     // Valider la transaction
     await client.query("COMMIT");
 
+    // Push + email au conducteur
+    sendPushToUser(
+      trajet.conducteur_id,
+      "Nouvelle demande de réservation",
+      `${prenom} veut rejoindre votre trajet ${trajet.lieu_depart} → ${trajet.destination}`,
+      "/conducteur/reservations-recues"
+    );
+    if (trajet.conducteur_email) {
+      emailNouvelleReservation({
+        to: trajet.conducteur_email,
+        passagerPrenom: prenom,
+        depart: trajet.lieu_depart,
+        destination: trajet.destination,
+        appUrl: APP_URL,
+      });
+    }
+
     return { reservation: reservationRes.rows[0] };
 
   } catch (err) {
@@ -200,14 +222,20 @@ export async function acceptReservation(conducteurId, reservationId) {
       SELECT
         r.id AS reservation_id,
         r.statut AS reservation_statut,
+        r.passager_id,
         r.trajet_id,
         t.conducteur_id,
         t.places_dispo,
-        t.statut AS trajet_statut
+        t.statut AS trajet_statut,
+        t.lieu_depart,
+        t.destination,
+        t.dateheure_depart,
+        u.email AS passager_email
       FROM reservations r
       JOIN trajets t ON t.id = r.trajet_id
+      JOIN utilisateurs u ON u.id = r.passager_id
       WHERE r.id = $1
-      FOR UPDATE
+      FOR UPDATE OF r
       `,
       [reservationId]
     );
@@ -269,6 +297,23 @@ export async function acceptReservation(conducteurId, reservationId) {
     // Valider transaction
     await client.query("COMMIT");
 
+    // Push + email au passager
+    sendPushToUser(
+      row.passager_id,
+      "Réservation acceptée ✅",
+      `Votre demande a été acceptée pour le trajet ${row.lieu_depart} → ${row.destination}`,
+      "/passager/mes-reservations"
+    );
+    if (row.passager_email) {
+      emailReservationAcceptee({
+        to: row.passager_email,
+        depart: row.lieu_depart,
+        destination: row.destination,
+        dateHeure: new Date(row.dateheure_depart).toLocaleString("fr-CA", { dateStyle: "full", timeStyle: "short" }),
+        appUrl: APP_URL,
+      });
+    }
+
     return {
       reservation: reservationRes.rows[0],
       trajet: {
@@ -302,12 +347,17 @@ export async function refuseReservation(conducteurId, reservationId) {
       SELECT
         r.id AS reservation_id,
         r.statut AS reservation_statut,
+        r.passager_id,
         r.trajet_id,
-        t.conducteur_id
+        t.conducteur_id,
+        t.lieu_depart,
+        t.destination,
+        u.email AS passager_email
       FROM reservations r
       JOIN trajets t ON t.id = r.trajet_id
+      JOIN utilisateurs u ON u.id = r.passager_id
       WHERE r.id = $1
-      FOR UPDATE
+      FOR UPDATE OF r
       `,
       [reservationId]
     );
@@ -366,6 +416,22 @@ export async function refuseReservation(conducteurId, reservationId) {
     );
 
     await client.query("COMMIT");
+
+    // Push + email au passager (refus)
+    sendPushToUser(
+      row.passager_id,
+      "Réservation refusée ❌",
+      `Votre demande a été refusée pour le trajet ${row.lieu_depart} → ${row.destination}`,
+      "/passager/mes-reservations"
+    );
+    if (row.passager_email) {
+      emailReservationRefusee({
+        to: row.passager_email,
+        depart: row.lieu_depart,
+        destination: row.destination,
+        appUrl: APP_URL,
+      });
+    }
 
     return { reservation: reservationRes.rows[0] };
   } catch (err) {
@@ -446,11 +512,15 @@ export async function cancelReservation(passagerId, reservationId) {
         t.statut AS trajet_statut,
         t.conducteur_id,
         t.lieu_depart,
-        t.destination
+        t.destination,
+        uc.email AS conducteur_email,
+        up.prenom AS passager_prenom
       FROM reservations r
       JOIN trajets t ON t.id = r.trajet_id
+      JOIN utilisateurs uc ON uc.id = t.conducteur_id
+      JOIN utilisateurs up ON up.id = r.passager_id
       WHERE r.id = $1
-      FOR UPDATE
+      FOR UPDATE OF r
       `,
       [reservationId]
     );
@@ -525,6 +595,23 @@ export async function cancelReservation(passagerId, reservationId) {
       [row.conducteur_id, `Un passager a annulé sa réservation pour votre trajet ${row.lieu_depart} → ${row.destination}`]
     );
     await client.query("COMMIT");
+
+    // Push + email au conducteur (annulation par le passager)
+    sendPushToUser(
+      row.conducteur_id,
+      "Réservation annulée",
+      `Un passager a annulé sa réservation pour votre trajet ${row.lieu_depart} → ${row.destination}`,
+      "/conducteur/reservations-recues"
+    );
+    if (row.conducteur_email) {
+      emailReservationAnnuleeParPassager({
+        to: row.conducteur_email,
+        passagerPrenom: row.passager_prenom || "Un passager",
+        depart: row.lieu_depart,
+        destination: row.destination,
+        appUrl: APP_URL,
+      });
+    }
 
     return {
       reservation: reservationRes.rows[0]

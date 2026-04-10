@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth.middlewares.js";
 import { pool } from "../DB/db.js";
+import { sendPushToUser } from "../utils/pushNotification.js";
+import { emailTrajetDemarre, emailTrajetTermine, emailTrajetAnnuleConducteur } from "../utils/sendEmail.js";
+
+const APP_URL = process.env.APP_URL || "https://campusride-delta.vercel.app";
 import { hasVehicule } from "../model/vehicules.model.js";
 import { getUserRole } from "../model/utilisateurs.model.js";
 import {
@@ -104,7 +108,7 @@ router.get("/recherche", requireAuth, async (req, res) => {
     const departLng   = req.query.depart_lng  ? parseFloat(req.query.depart_lng) : null;
     const destLat     = req.query.dest_lat    ? parseFloat(req.query.dest_lat)   : null;
     const destLng     = req.query.dest_lng    ? parseFloat(req.query.dest_lng)   : null;
-    const rayonKm     = req.query.rayon_km    ? parseFloat(req.query.rayon_km)   : 5;
+    const rayonKm     = req.query.rayon_km    ? parseFloat(req.query.rayon_km)   : 20;
 
     if (rayonKm < 1 || rayonKm > 50) {
       return res.status(400).json({ message: "rayon_km doit être entre 1 et 50 km." });
@@ -184,6 +188,17 @@ router.patch("/:id/demarrer", requireAuth, async (req, res) => {
       [trajetId, trajet.lieu_depart, trajet.destination]
     );
 
+    // Push + email aux passagers acceptés (non bloquant)
+    pool.query(
+      `SELECT r.passager_id, u.email FROM reservations r JOIN utilisateurs u ON u.id = r.passager_id WHERE r.trajet_id = $1 AND r.statut = 'ACCEPTEE'`,
+      [trajetId]
+    ).then(({ rows }) => rows.forEach(p => {
+      sendPushToUser(p.passager_id, "Trajet démarré 🚗",
+        `Votre trajet ${trajet.lieu_depart} → ${trajet.destination} vient de démarrer !`,
+        "/passager/mes-reservations");
+      if (p.email) emailTrajetDemarre({ to: p.email, depart: trajet.lieu_depart, destination: trajet.destination, appUrl: APP_URL });
+    })).catch(() => {});
+
     return res.json({ trajet: updated[0] });
   } catch (err) {
     console.error(err);
@@ -210,6 +225,18 @@ router.patch("/:id/terminer", requireAuth, async (req, res) => {
     }
 
     await client.query("COMMIT");
+
+    // Push + email aux passagers du trajet terminé (non bloquant)
+    pool.query(
+      `SELECT r.passager_id, u.email FROM reservations r JOIN utilisateurs u ON u.id = r.passager_id WHERE r.trajet_id = $1 AND r.statut = 'ACCEPTEE'`,
+      [trajetId]
+    ).then(({ rows }) => rows.forEach(p => {
+      sendPushToUser(p.passager_id, "Trajet terminé ✅",
+        `Votre trajet ${trajet.lieu_depart} → ${trajet.destination} est terminé.`,
+        "/passager/mes-reservations");
+      if (p.email) emailTrajetTermine({ to: p.email, depart: trajet.lieu_depart, destination: trajet.destination, appUrl: APP_URL });
+    })).catch(() => {});
+
     return res.json({ trajet });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -254,6 +281,18 @@ router.patch("/:id/annuler", requireAuth, async (req, res) => {
     }
 
     await client.query("COMMIT");
+
+    // Push + email aux passagers annulés (non bloquant)
+    pool.query(
+      `SELECT r.passager_id, u.email FROM reservations r JOIN utilisateurs u ON u.id = r.passager_id WHERE r.trajet_id = $1 AND r.statut = 'ANNULEE'`,
+      [trajetId]
+    ).then(({ rows }) => rows.forEach(p => {
+      sendPushToUser(p.passager_id, "Trajet annulé ❌",
+        `Le trajet ${result.trajet.lieu_depart} → ${result.trajet.destination} a été annulé par le conducteur.`,
+        "/passager/mes-reservations");
+      if (p.email) emailTrajetAnnuleConducteur({ to: p.email, depart: result.trajet.lieu_depart, destination: result.trajet.destination, appUrl: APP_URL });
+    })).catch(() => {});
+
     return res.json(result);
   } catch (err) {
     await client.query("ROLLBACK");
@@ -281,7 +320,7 @@ router.get("/mes-trajets", requireAuth, async (req, res) => {
 // =====================
 // GET /Trajets populaires
 // =====================
-router.get("/populaires", async (req, res) => {
+router.get("/populaires", async (_req, res) => {
   try {
     const rows = await getTrajetsPopulaires();
     return res.json(rows);

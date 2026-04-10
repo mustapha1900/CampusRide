@@ -33,7 +33,7 @@ export async function searchTrajets({
   depart, destination, date, userId,
   departLat = null, departLng = null,
   destLat   = null, destLng   = null,
-  rayonKm   = 5,
+  rayonKm   = 20,
 }) {
 
   
@@ -139,7 +139,7 @@ export async function searchTrajets({
     depart      && depart.trim()      ? depart.trim()      : null, // $6
     destination && destination.trim() ? destination.trim() : null, // $7
     date        && date.trim()        ? date.trim()        : null, // $8
-    rayonKm     ?? 5,                                      // $9
+    rayonKm     ?? 20,                                     // $9
   ];
 
   const { rows } = await pool.query(q, values);
@@ -295,7 +295,7 @@ export async function annulerTrajetConducteurEtNotifier({ client, trajetId }) {
     await client.query(
       `
       INSERT INTO notifications (utilisateur_id, type, message, cree_le)
-      SELECT unnest($1::text[]), 'TRAJET_ANNULE', $2, NOW()
+      SELECT unnest($1::uuid[]), 'TRAJET_ANNULE', $2, NOW()
       `,
       [passagerIds, `Votre trajet ${trajet.lieu_depart} → ${trajet.destination} a été annulé par le conducteur.`]
     );

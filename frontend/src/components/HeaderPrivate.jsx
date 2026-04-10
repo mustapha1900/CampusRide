@@ -3,6 +3,7 @@ import { logout } from "../utils/auth.js";
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
+import { registerPush, requestPushPermission } from "../utils/pushSubscription.js";
 
 const FILL_ICON = {
   "bi-search":    "bi-search",
@@ -29,6 +30,31 @@ export default function HeaderPrivate({ isDark, onToggleTheme }) {
 
   const [notifications,  setNotifications]  = useState([]);
   const [messagesNonLus, setMessagesNonLus] = useState(0);
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "granted"
+  );
+  const [pushToast, setPushToast] = useState(null);
+
+  // Enregistrer les push notifications si déjà accordé
+  useEffect(() => {
+    if (token) registerPush(token);
+  }, [token]);
+
+  const handleEnableNotifications = async () => {
+    try {
+      const granted = await requestPushPermission(token);
+      if (granted) {
+        setNotifPermission("granted");
+        setPushToast({ ok: true, msg: "Notifications activées ✅" });
+      } else {
+        setNotifPermission(Notification.permission);
+        setPushToast({ ok: false, msg: "Permission refusée. Activez les notifications dans les réglages du navigateur." });
+      }
+    } catch (err) {
+      setPushToast({ ok: false, msg: "Erreur : " + err.message });
+    }
+    setTimeout(() => setPushToast(null), 4000);
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -107,6 +133,32 @@ export default function HeaderPrivate({ isDark, onToggleTheme }) {
     <>
       {/* ── Gradient accent ── */}
       <div style={{ height: 3, background: "linear-gradient(90deg, #198754, #20c374, #198754)" }} />
+
+      {/* ── Bannière activation notifications ── */}
+      {notifPermission === "default" && (
+        <div
+          className="d-flex align-items-center justify-content-between px-3 py-2"
+          style={{ background: "#198754", color: "#fff", fontSize: "0.82rem" }}
+        >
+          <span><i className="bi bi-bell-fill me-2" />Activez les notifications pour recevoir vos alertes</span>
+          <button
+            className="btn btn-sm btn-light fw-semibold ms-2"
+            style={{ fontSize: "0.78rem", padding: "2px 10px" }}
+            onClick={handleEnableNotifications}
+          >
+            Activer
+          </button>
+        </div>
+      )}
+      {notifPermission === "denied" && (
+        <div
+          className="d-flex align-items-center px-3 py-2"
+          style={{ background: "#dc3545", color: "#fff", fontSize: "0.82rem" }}
+        >
+          <i className="bi bi-bell-slash-fill me-2" />
+          Notifications bloquées — activez-les dans les réglages de votre navigateur
+        </div>
+      )}
 
       {/* ════════════════════════════════════════════════════════
           TOP HEADER
@@ -458,6 +510,16 @@ export default function HeaderPrivate({ isDark, onToggleTheme }) {
           );
         })}
       </nav>
+
+      {/* Toast retour activation notifications */}
+      {pushToast && (
+        <div
+          className="position-fixed bottom-0 start-50 translate-middle-x mb-4 px-3 py-2 rounded-3 shadow-lg text-white fw-semibold"
+          style={{ zIndex: 9999, background: pushToast.ok ? "#198754" : "#dc3545", fontSize: "0.85rem", maxWidth: "90vw", textAlign: "center" }}
+        >
+          {pushToast.msg}
+        </div>
+      )}
     </>
   );
 }

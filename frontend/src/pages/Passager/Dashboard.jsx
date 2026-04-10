@@ -47,8 +47,11 @@ export default function Dashboard() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (!depart.trim() || !destination.trim() || !date) return;
-
+    if (!depart.trim() || !destination.trim() || !date) {
+      setFormError("Veuillez remplir le départ, la destination et la date.");
+      return;
+    }
+    setFormError("");
     navigate("/passager/search", {
       state: { depart, destination, date, departCoords, destCoords },
     });
@@ -56,6 +59,7 @@ export default function Dashboard() {
 
   const [trips, setTrips] = useState([]);
   const [toast, setToast] = useState({ show: false, text: "" });
+  const [formError, setFormError] = useState("");
 
   const showToast = (text) => {
     setToast({ show: true, text });
@@ -145,13 +149,13 @@ export default function Dashboard() {
                     <div className="mt-auto px-3 px-md-4 pb-3 pb-md-4">
                       <form
                         onSubmit={handleSearch}
-                        className={`rounded-4 shadow-lg overflow-hidden ${isDark ? "bg-dark" : "bg-white"}`}
-                        style={{ backdropFilter: "blur(8px)" }}
+                        className={`rounded-4 shadow-lg ${isDark ? "bg-dark" : "bg-white"}`}
+                        style={{ backdropFilter: "blur(8px)", overflow: "visible" }}
                       >
                         {/* Green header bar */}
                         <div
                           className="px-3 py-2 d-flex align-items-center gap-2"
-                          style={{ background: "linear-gradient(90deg, #198754, #20c374)" }}
+                          style={{ background: "linear-gradient(90deg, #198754, #20c374)", borderRadius: "12px 12px 0 0" }}
                         >
                           <i className="bi bi-car-front-fill text-white" style={{ fontSize: "0.95rem" }} />
                           <span className="text-white fw-semibold" style={{ fontSize: "0.82rem", letterSpacing: "0.03em" }}>
@@ -212,8 +216,8 @@ export default function Dashboard() {
                                   />
                                   <button
                                     type="button"
-                                    className="btn p-0 ms-1 text-success opacity-75"
-                                    style={{ lineHeight: 1 }}
+                                    className="btn text-success opacity-75 d-flex align-items-center justify-content-center flex-shrink-0"
+                                    style={{ width: 36, height: 36, padding: 0 }}
                                     onClick={() => {
                                       if (navigator.geolocation) {
                                         navigator.geolocation.getCurrentPosition((pos) => {
@@ -225,13 +229,16 @@ export default function Dashboard() {
                                     aria-label="GPS départ"
                                     title="Ma position"
                                   >
-                                    <i className="bi bi-crosshair" style={{ fontSize: "0.85rem" }} />
+                                    <i className="bi bi-crosshair" style={{ fontSize: "1rem" }} />
                                   </button>
                                 </div>
                                 <div className="mt-1">
                                   <button
                                     type="button"
-                                    onClick={() => setDepart("Collège La Cité")}
+                                    onClick={() => {
+                                      setDepart("801, promenade de l'Aviation, Ottawa, ON");
+                                      setDepartCoords({ lat: 45.4456, lng: -75.6406 });
+                                    }}
                                     className="badge border-0 rounded-pill fw-normal"
                                     style={{
                                       background: "rgba(25,135,84,0.1)",
@@ -271,8 +278,8 @@ export default function Dashboard() {
                                   />
                                   <button
                                     type="button"
-                                    className="btn p-0 ms-1 text-success opacity-75"
-                                    style={{ lineHeight: 1 }}
+                                    className="btn text-success opacity-75 d-flex align-items-center justify-content-center flex-shrink-0"
+                                    style={{ width: 36, height: 36, padding: 0 }}
                                     onClick={() => {
                                       if (navigator.geolocation) {
                                         navigator.geolocation.getCurrentPosition((pos) => {
@@ -284,13 +291,16 @@ export default function Dashboard() {
                                     aria-label="GPS destination"
                                     title="Ma position"
                                   >
-                                    <i className="bi bi-crosshair" style={{ fontSize: "0.85rem" }} />
+                                    <i className="bi bi-crosshair" style={{ fontSize: "1rem" }} />
                                   </button>
                                 </div>
                                 <div className="mt-1">
                                   <button
                                     type="button"
-                                    onClick={() => setDestination("Collège La Cité")}
+                                    onClick={() => {
+                                      setDestination("801, promenade de l'Aviation, Ottawa, ON");
+                                      setDestCoords({ lat: 45.4456, lng: -75.6406 });
+                                    }}
                                     className="badge border-0 rounded-pill fw-normal"
                                     style={{
                                       background: "rgba(25,135,84,0.1)",
@@ -310,8 +320,8 @@ export default function Dashboard() {
                             <div className="d-flex align-items-center flex-shrink-0">
                               <button
                                 type="button"
-                                className={`btn rounded-circle p-0 d-flex align-items-center justify-content-center shadow-sm ${isDark ? "btn-outline-secondary" : "btn-outline-secondary"}`}
-                                style={{ width: 30, height: 30 }}
+                                className="btn btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+                                style={{ width: 44, height: 44, padding: 0 }}
                                 onClick={() => {
                                   const temp = depart;
                                   setDepart(destination);
@@ -323,7 +333,7 @@ export default function Dashboard() {
                                 aria-label="Inverser départ/destination"
                                 title="Inverser"
                               >
-                                <i className="bi bi-arrow-down-up" style={{ fontSize: "0.75rem" }} />
+                                <i className="bi bi-arrow-down-up" style={{ fontSize: "0.85rem" }} />
                               </button>
                             </div>
                           </div>
@@ -339,7 +349,7 @@ export default function Dashboard() {
                                 type="date"
                                 className={`border-0 bg-transparent form-control p-0 shadow-none ${isDark ? "text-light" : ""}`}
                                 value={date}
-                                onChange={(e) => setDate(e.target.value)}
+                                onChange={(e) => { setDate(e.target.value); setFormError(""); }}
                               />
                             </div>
                             <button
@@ -351,6 +361,12 @@ export default function Dashboard() {
                               <span className="d-none d-sm-inline">Rechercher</span>
                             </button>
                           </div>
+                          {formError && (
+                            <div className="d-flex align-items-center gap-1 mt-2" style={{ fontSize: "0.78rem", color: "#dc3545" }}>
+                              <i className="bi bi-exclamation-circle-fill" />
+                              {formError}
+                            </div>
+                          )}
                         </div>
                       </form>
                     </div>
@@ -521,7 +537,13 @@ export default function Dashboard() {
                                   type="button"
                                   className="btn btn-success btn-sm fw-semibold rounded-3 px-3"
                                   style={{ background: "linear-gradient(135deg, #198754, #20c374)", border: "none", fontSize: "0.8rem" }}
-                                  onClick={() => navigate("/passager/search")}
+                                  onClick={() => navigate("/passager/search", {
+                                    state: {
+                                      depart: trajet.lieu_depart,
+                                      destination: trajet.destination,
+                                      date: trajet.dateheure_depart.split("T")[0],
+                                    },
+                                  })}
                                 >
                                   Réserver
                                 </button>
